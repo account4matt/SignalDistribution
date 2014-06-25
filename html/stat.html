@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html>
+    <head>
+        <meta charset="utf-8" />
+        <title>Real Time</title>
+               
+    </head>
+    <body>
+        <h3>Real Time</h3>
+        <div id="holder" style="float:left"></div>
+        <div id="output" style="float:left;"></div>
+    </body>
+    <script src="raphael-min.js"></script> 
+    <script>
+        var websocket,output,pager;
+        window.onload = function (){    
+            output = document.getElementById("output");
+            pager = Raphael("holder", 400, 400);
+            join();
+        }
+
+        function drawTree(data){
+
+        }
+
+        function draw(data){
+            var angle = 90; dataLen = data.length, trunks = {}, trunkCount =0, nottrunks={}, nottrunkCount =0, draws={} ,r = 20;
+            pager.clear()
+            for(var i=0;i<dataLen;i++){
+                if(data[i].Mode & 1 == 1){
+                    trunks[data[i].RemoteInfo.IpAddr] = data[i];
+                    trunkCount++;
+                } else if(data[i].Mode & 2 == 2){
+                    nottrunks[data[i].RemoteInfo.IpAddr] = data[i];
+                    nottrunkCount++;
+                }
+            }
+            var pangle = 360 / trunkCount;
+            for(var st in trunks){
+                var color = Raphael.getColor();
+                (function (t, c, s) {
+                    draws[s] = pager.circle(200, 360, r).attr({stroke: c, fill: c, transform: t, "fill-opacity": .4}).click(function () {
+                        var html = "";
+                        var a = [], cc = 0,rc=0;
+                        for(a[cc++] in  trunks[s].Clients);
+                        for(a[rc++] in  trunks[s].Recorders);
+                        html += "Addr:" + s + "</br>";
+                        html += "Client Count:" + cc + "</br>";
+                        html += "Recorder Count:" + rc + "</br>";
+                        html += "Time:" + trunks[s].Time + "</br>";
+                        writeToScreen(html);
+                    }).mouseover(function () {
+                        this.animate({"fill-opacity": .75}, 500);
+                    }).mouseout(function () {
+                        this.animate({"fill-opacity": .4}, 500);
+                    });
+                })("r" + angle + " 200 200", color,st);
+                angle += pangle;
+            }
+            var color = "#0F0";
+            for(var i=0;i<dataLen;i++){
+                for(var rid in data[i].TrunkRelays){
+                    var relay = data[i].TrunkRelays[rid];
+                    var fd = draws[relay.FromSID],td = draws[relay.ToSID];
+                    if(! fd || ! td){
+                        continue;
+                    }
+                    var fbox = fd.getBBox(),tbox = td.getBBox();
+                    var fdx = fbox.x + (fbox.width/2),fdy =  fbox.y + (fbox.height/2),tdx = tbox.x + (tbox.width/2),tdy =  tbox.y + (tbox.height/2);
+                    var x = fdx-tdx,y=fdy-tdy,l=Math.sqrt(Math.pow(x,2) + Math.pow(y,2));
+                    var rate = r * 1.0 / l;
+                    fdx -= rate*x;tdx += rate*x;fdy -= rate*y;tdy += rate*y;
+                    var path = "M" + fdx +  " "+ fdy + "L" + tdx + " " + tdy;
+                    (function (c, r) {
+                        pager.path(path).attr({"stroke":c,"stroke-width":2,"stroke-opacity": .4}).click(function(){
+                             var html = "";
+                            html += "From Addr:" + r.FromSID + "</br>";
+                            html += "To Addr:" + r.ToSID + "</br>";
+                            writeToScreen(html);
+                        }).mouseover(function () {
+                            this.animate({"stroke-width": 4,"stroke-opacity": .75}, 300);
+                        }).mouseout(function () {
+                            this.animate({"stroke-width": 2,"stroke-opacity": .4}, 300);
+                        });
+                        pager.circle(fdx-(x*1.3/l),fdy-(y*1.3/l),1.3).attr({stroke: c, fill: c, "fill-opacity": .4})
+                    })(color,relay);
+                }
+            }  
+        }
+
+        function join(){
+            var wsUri ="ws://"+location.host+"/route/realtime";
+            if(websocket){
+                websocket.close();
+            }
+            connws(wsUri);
+        }
+            function connws(url) {
+                websocket = new WebSocket(url); 
+                websocket.onclose = function(evt) { onClose(evt); };
+                websocket.onmessage = function(evt) { onMessage(evt); }; 
+                websocket.onerror = function(evt) { onError(evt); }; 
+            } 
+
+            function onClose(evt) { 
+                writeToScreen('<span style="color: blue;">已断开连接</span>');
+            } 
+         
+            function onMessage(evt) {
+                var d = JSON.parse( evt.data );
+                if (!d){
+                    d = [];
+                }
+                draw(d);
+            }  
+         
+            function onError(evt) {
+                writeToScreen('<span style="color: red;">ERROR:</span> '+ evt.data); 
+            }   
+            
+            function writeToScreen(message) {
+                output.innerHTML = message; 
+            }
+    </script>
+  </html>

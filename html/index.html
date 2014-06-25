@@ -1,0 +1,143 @@
+﻿<!DOCTYPE html>
+<html>
+    <head>
+        <meta charset="utf-8" />
+        <title>信号测试</title>
+    </head>
+    <body>
+        <h3>信号测试</h3>
+        <div id="joinin">
+            cid:<input type="text" id="cid"/>
+            token:<input type="text" id="token"/>
+            <input type="button" value="进入" id="join"/>
+        </div>
+        <div id="output">            
+        </div>
+        <div id="senddiv" style="display:none;">
+            <input type="text" id="text"/>
+            <input type="button" value="发送" id="send"/>
+        </div>
+
+          <script type="text/javascript">
+            var websocket,heartbeat;
+            var output; 
+            function init() { 
+                output = document.getElementById("output");
+                document.getElementById("join").addEventListener("click", route, false);
+                document.getElementById("send").addEventListener("click", doSend, false); 
+            }
+            function route(){
+                output.innerHTML = "";
+                var cid = document.getElementById("cid").value;
+                var token = document.getElementById("token").value;
+                if(cid != "" && token != ""){
+                    var wsUri ="ws://127.0.0.1:25151/route/route";
+                    var route = new WebSocket(wsUri); 
+                    route.onmessage = function(evt) {
+                        var data = evt.data;
+                        var server,recorder;
+                        if(data.indexOf("data")>-1){
+                            data = data.substr(5);
+                            var ips = data.split(";");
+                            server = ips[0];
+                            if (ips.length>1 && ips[1].indexOf("-")){
+                                recorder = ips[1].split("-")[1];
+                            }
+                            if (recorder){
+                                fetchHistory(recorder,server);
+                            }else{
+                                join(server);
+                            }
+                        }
+                    }; 
+                }
+            }
+            function fetchHistory(hhost,shost){
+                writeToScreen('<span style="color: blue;">Recorder:' + hhost + '  Station:' + shost +'</span>')
+                var cid = document.getElementById("cid").value;
+                var token = document.getElementById("token").value;
+                if(cid != "" && token != ""){
+                    var wsUri ="ws://"+hhost+"/recorder/fetch?cid=" + cid + "&token=" + token;
+                    var fetchWs = new WebSocket(wsUri); 
+                    fetchWs.onclose = function(evt) { join(shost);  };
+                    fetchWs.onmessage = function(evt) { onMessage(evt); }; 
+                }
+            }
+            function join(host){
+                var cid = document.getElementById("cid").value;
+                var token = document.getElementById("token").value;
+                if(cid != "" && token != ""){
+                    var wsUri ="ws://"+host+"/station/client/join?cid=" + cid + "&token=" + token;
+                    if(websocket && websocket.readyState==1){
+                        clearInterval(heartbeat);
+                        websocket.close();
+                    }
+                    connws(wsUri);
+                    document.getElementById("senddiv").style.display = "";
+                }
+            }
+            function connws(url) {
+                websocket = new WebSocket(url); 
+                websocket.onopen = function(){ heartbeat = setInterval(function(){ websocket.send("{}");},20000); };
+                websocket.onclose = function(evt) { onClose(evt);  };
+                websocket.onmessage = function(evt) { onMessage(evt); }; 
+                websocket.onerror = function(evt) { onError(evt); }; 
+            } 
+
+            function onClose(evt) { 
+                writeToScreen('<span style="color: blue;">已断开连接</span>');
+            } 
+         
+            function onMessage(evt) {
+                var msgobj = JSON.parse( evt.data );
+                var msgs = [];
+                if(!Array.isArray(msgobj)){
+                    msgs.push(msgobj);
+                }else{
+                    msgs = msgobj;
+                }
+                var len = msgs.length;
+                for(var i=0;i<len;i++){
+                    msgobj = msgs[i];
+                    var text = null;
+                    switch(msgobj.Type){
+                        case 2:
+                            text = "【"+msgobj.PID+"】进入";
+                            break;
+                        case 3:
+                            text = "【"+msgobj.PID+"】离开";
+                            break;
+                        case 1:
+                            text = "【"+msgobj.PID+"】:"+msgobj.Text;
+                            break;
+                        default:
+                            break;
+                    }
+                    if(text != null) {
+                        writeToScreen('<span style="color: blue;">'+ text +'</span>');
+                    }
+                }
+            }  
+         
+            function onError(evt) {
+                writeToScreen('<span style="color: red;">ERROR:</span> '+ evt.data); 
+            }   
+            
+            function writeToScreen(message) {
+                var pre = document.createElement("p");
+                pre.style.wordWrap = "break-word";
+                pre.innerHTML = message; output.appendChild(pre); 
+            }
+
+            function doSend() { 
+                var message = document.getElementById("text").value;
+                document.getElementById("text").value = "";
+                var msgobj = { "Type":1,"Text":message} ;
+                websocket.send(JSON.stringify(msgobj)); 
+            }  
+         
+            window.addEventListener("load", init, false); 
+            
+            </script>
+    </body>
+  </html>
